@@ -3,7 +3,7 @@ name = "pingora"
 version = "0.4.0"
 authors = ["Yuchen Wu <yuchen@cloudflare.com>"]
 license = "Apache-2.0"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/cloudflare/pingora"
 description = """
 A framework to build fast, reliable and programmable networked systems at Internet scale.
@@ -119,4 +119,11 @@ sentry = ["pingora-core/sentry"]
 openssl_derived = ["any_tls"]
 any_tls = []
 patched_http1 = ["pingora-core/patched_http1"]
-document-features = ["dep:document-features", "proxy", "lb", "cache", "time", "sentry"]
+document-features = [
+    "dep:document-features",
+    "proxy",
+    "lb",
+    "cache",
+    "time",
+    "sentry",
+]

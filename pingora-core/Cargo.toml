@@ -3,7 +3,7 @@ name = "pingora-core"
 version = "0.4.0"
 authors = ["Yuchen Wu <yuchen@cloudflare.com>"]
 license = "Apache-2.0"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/cloudflare/pingora"
 categories = ["asynchronous", "network-programming"]
 keywords = ["async", "http", "network", "pingora"]
@@ -88,8 +88,8 @@ jemallocator = "0.5"
 
 [features]
 default = []
-openssl = ["pingora-openssl", "openssl_derived",]
-boringssl = ["pingora-boringssl", "openssl_derived",]
+openssl = ["pingora-openssl", "openssl_derived"]
+boringssl = ["pingora-boringssl", "openssl_derived"]
 rustls = ["pingora-rustls", "any_tls", "dep:x509-parser", "ouroboros"]
 patched_http1 = ["pingora-http/patched_http1"]
 openssl_derived = ["any_tls"]

@@ -36,7 +36,7 @@ fn purge_response(purge_status: &PurgeStatus) -> Cow<'static, ResponseHeader> {
         PurgeStatus::NoCache => &*NOT_PURGEABLE,
         PurgeStatus::Found => &*OK,
         PurgeStatus::NotFound => &*NOT_FOUND,
-        PurgeStatus::Error(ref _e) => &*INTERNAL_ERROR,
+        PurgeStatus::Error(_e) => &*INTERNAL_ERROR,
     };
     Cow::Borrowed(resp)
 }

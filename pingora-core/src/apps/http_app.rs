@@ -22,9 +22,9 @@ use std::sync::Arc;
 
 use crate::apps::HttpServerApp;
 use crate::modules::http::{HttpModules, ModuleBuilder};
+use crate::protocols::Stream;
 use crate::protocols::http::HttpTask;
 use crate::protocols::http::ServerSession;
-use crate::protocols::Stream;
 use crate::server::ShutdownWatch;
 
 /// This trait defines how to map a request to a response

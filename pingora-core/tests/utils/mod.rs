@@ -17,8 +17,8 @@ use std::{thread, time};
 
 use clap::Parser;
 use pingora_core::listeners::Listeners;
-use pingora_core::server::configuration::Opt;
 use pingora_core::server::Server;
+use pingora_core::server::configuration::Opt;
 use pingora_core::services::listening::Service;
 
 use async_trait::async_trait;

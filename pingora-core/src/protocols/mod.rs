@@ -107,20 +107,20 @@ pub trait IO:
 }
 
 impl<
-        T: AsyncRead
-            + AsyncWrite
-            + Shutdown
-            + UniqueID
-            + Ssl
-            + GetTimingDigest
-            + GetProxyDigest
-            + GetSocketDigest
-            + Peek
-            + Unpin
-            + Debug
-            + Send
-            + Sync,
-    > IO for T
+    T: AsyncRead
+        + AsyncWrite
+        + Shutdown
+        + UniqueID
+        + Ssl
+        + GetTimingDigest
+        + GetProxyDigest
+        + GetSocketDigest
+        + Peek
+        + Unpin
+        + Debug
+        + Send
+        + Sync,
+> IO for T
 where
     T: 'static,
 {
@@ -241,7 +241,7 @@ pub(crate) trait ConnSockReusable {
 use l4::socket::SocketAddr;
 use log::{debug, error};
 #[cfg(unix)]
-use nix::sys::socket::{getpeername, SockaddrStorage, UnixAddr};
+use nix::sys::socket::{SockaddrStorage, UnixAddr, getpeername};
 #[cfg(unix)]
 use std::os::unix::prelude::AsRawFd;
 #[cfg(windows)]

@@ -3,7 +3,7 @@ name = "pingora-openssl"
 version = "0.4.0"
 authors = ["Yuchen Wu <yuchen@cloudflare.com>"]
 license = "Apache-2.0"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/cloudflare/pingora"
 categories = ["asynchronous", "network-programming"]
 keywords = ["async", "tls", "ssl", "pingora"]
@@ -21,7 +21,7 @@ openssl-sys = "0.9"
 openssl = { version = "0.10", features = ["vendored"] }
 tokio-openssl = { version = "0.6" }
 libc = "0.2.70"
-foreign-types = { version = "0.3"}
+foreign-types = { version = "0.3" }
 
 [dev-dependencies]
 tokio-test = "0.4"

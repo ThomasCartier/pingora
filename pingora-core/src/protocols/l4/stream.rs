@@ -36,7 +36,7 @@ use tokio::net::TcpStream;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
-use crate::protocols::l4::ext::{set_tcp_keepalive, TcpKeepalive};
+use crate::protocols::l4::ext::{TcpKeepalive, set_tcp_keepalive};
 use crate::protocols::raw_connect::ProxyDigest;
 use crate::protocols::{
     GetProxyDigest, GetSocketDigest, GetTimingDigest, Peek, Shutdown, SocketDigest, Ssl,
@@ -203,7 +203,7 @@ impl AsyncRead for RawStreamWrapper {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         use futures::ready;
-        use nix::sys::socket::{recvmsg, ControlMessageOwned, MsgFlags, SockaddrStorage};
+        use nix::sys::socket::{ControlMessageOwned, MsgFlags, SockaddrStorage, recvmsg};
 
         // if we do not need rx timestamp, then use the standard path
         if !self.enable_rx_ts {
@@ -388,7 +388,7 @@ impl Stream {
 
     #[cfg(target_os = "linux")]
     pub fn set_rx_timestamp(&mut self) -> Result<()> {
-        use nix::sys::socket::{setsockopt, sockopt, TimestampingFlag};
+        use nix::sys::socket::{TimestampingFlag, setsockopt, sockopt};
 
         if let RawStream::Tcp(s) = &self.stream.get_mut().stream {
             let timestamp_options = TimestampingFlag::SOF_TIMESTAMPING_RX_SOFTWARE

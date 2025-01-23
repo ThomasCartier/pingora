@@ -16,7 +16,7 @@
 
 use crate::listeners::TlsAcceptCallbacks;
 use crate::protocols::tls::SslStream;
-use crate::protocols::{Shutdown, IO};
+use crate::protocols::{IO, Shutdown};
 use crate::tls::ext;
 use crate::tls::ext::ssl_from_acceptor;
 use crate::tls::ssl;

@@ -17,11 +17,11 @@ use libc::*;
 use openssl::error::ErrorStack;
 use openssl::pkey::{HasPrivate, PKeyRef};
 use openssl::ssl::{Ssl, SslAcceptor, SslRef};
+use openssl::x509::X509Ref;
 use openssl::x509::store::X509StoreRef;
 use openssl::x509::verify::X509VerifyParamRef;
-use openssl::x509::X509Ref;
 use openssl_sys::{
-    SSL_ctrl, EVP_PKEY, SSL, SSL_CTRL_SET_GROUPS_LIST, SSL_CTRL_SET_VERIFY_CERT_STORE, X509,
+    EVP_PKEY, SSL, SSL_CTRL_SET_GROUPS_LIST, SSL_CTRL_SET_VERIFY_CERT_STORE, SSL_ctrl, X509,
     X509_VERIFY_PARAM,
 };
 use std::ffi::CString;
@@ -35,7 +35,7 @@ fn cvt(r: c_long) -> Result<c_long, ErrorStack> {
     }
 }
 
-extern "C" {
+unsafe extern "C" {
     pub fn X509_VERIFY_PARAM_add1_host(
         param: *mut X509_VERIFY_PARAM,
         name: *const c_char,

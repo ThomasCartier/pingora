@@ -15,8 +15,8 @@
 //! Rustls TLS server specific implementation
 
 use crate::listeners::TlsAcceptCallbacks;
-use crate::protocols::tls::rustls::TlsStream;
 use crate::protocols::IO;
+use crate::protocols::tls::rustls::TlsStream;
 use crate::{listeners::tls::Acceptor, protocols::Shutdown};
 use async_trait::async_trait;
 use log::warn;

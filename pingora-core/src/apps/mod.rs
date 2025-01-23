@@ -23,11 +23,11 @@ use log::{debug, error};
 use std::future::poll_fn;
 use std::sync::Arc;
 
-use crate::protocols::http::v2::server;
-use crate::protocols::http::ServerSession;
+use crate::protocols::ALPN;
 use crate::protocols::Digest;
 use crate::protocols::Stream;
-use crate::protocols::ALPN;
+use crate::protocols::http::ServerSession;
+use crate::protocols::http::v2::server;
 
 // https://datatracker.ietf.org/doc/html/rfc9113#section-3.4
 const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";

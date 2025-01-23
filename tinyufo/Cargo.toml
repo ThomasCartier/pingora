@@ -2,7 +2,7 @@
 name = "TinyUFO"
 version = "0.4.0"
 authors = ["Yuchen Wu <yuchen@cloudflare.com>"]
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 description = "In-memory cache implementation with TinyLFU as the admission policy and S3-FIFO as the eviction policy"
 repository = "https://github.com/cloudflare/pingora"
@@ -28,7 +28,7 @@ zipf = "7"
 moka = { version = "0", features = ["sync"] }
 dhat = "0"
 quick_cache = "0.6"
-triomphe = "<=0.1.11" # 0.1.12 requires Rust 1.76
+triomphe = "<=0.1.11"                         # 0.1.12 requires Rust 1.76
 
 [[bench]]
 name = "bench_perf"
