@@ -16,12 +16,12 @@
 use super::cert;
 use async_trait::async_trait;
 use clap::Parser;
-use http::header::VARY;
+use http::header::{ACCEPT_ENCODING, VARY};
 use http::HeaderValue;
 use once_cell::sync::Lazy;
 use pingora_cache::cache_control::CacheControl;
 use pingora_cache::key::HashBinary;
-use pingora_cache::lock::CacheKeyLock;
+use pingora_cache::lock::CacheKeyLockImpl;
 use pingora_cache::{
     eviction::simple_lru::Manager, filters::resp_cacheable, lock::CacheLock, predictor::Predictor,
     set_compression_dict_path, CacheMeta, CacheMetaDefaults, CachePhase, MemCache, NoCacheReason,
@@ -328,7 +328,7 @@ static CACHE_BACKEND: Lazy<MemCache> = Lazy::new(MemCache::new);
 const CACHE_DEFAULT: CacheMetaDefaults = CacheMetaDefaults::new(|_| Some(1), 1, 1);
 static CACHE_PREDICTOR: Lazy<Predictor<32>> = Lazy::new(|| Predictor::new(5, None));
 static EVICTION_MANAGER: Lazy<Manager> = Lazy::new(|| Manager::new(8192)); // 8192 bytes
-static CACHE_LOCK: Lazy<Box<(dyn CacheKeyLock + std::marker::Send + Sync + 'static)>> =
+static CACHE_LOCK: Lazy<Box<CacheKeyLockImpl>> =
     Lazy::new(|| CacheLock::new_boxed(std::time::Duration::from_secs(2)));
 // Example of how one might restrict which fields can be varied on.
 static CACHE_VARY_ALLOWED_HEADERS: Lazy<Option<HashSet<&str>>> =
@@ -348,6 +348,38 @@ impl ProxyHttp for ExampleProxyCache {
         CacheCTX {
             upstream_status: None,
         }
+    }
+
+    async fn early_request_filter(
+        &self,
+        session: &mut Session,
+        _ctx: &mut Self::CTX,
+    ) -> Result<()> {
+        if session
+            .req_header()
+            .headers
+            .get("x-downstream-compression")
+            .is_some()
+        {
+            session
+                .downstream_modules_ctx
+                .get_mut::<ResponseCompression>()
+                .unwrap()
+                .adjust_level(6);
+        }
+        if session
+            .req_header()
+            .headers
+            .get("x-downstream-decompression")
+            .is_some()
+        {
+            session
+                .downstream_modules_ctx
+                .get_mut::<ResponseCompression>()
+                .unwrap()
+                .adjust_decompression(true);
+        }
+        Ok(())
     }
 
     async fn upstream_peer(
@@ -415,12 +447,19 @@ impl ProxyHttp for ExampleProxyCache {
         &self,
         session: &Session,
         _meta: &CacheMeta,
+        is_fresh: bool,
         _ctx: &mut Self::CTX,
     ) -> Result<Option<ForcedInvalidationKind>> {
         // allow test header to control force expiry/miss
         if session.get_header_bytes("x-force-miss") != b"" {
             return Ok(Some(ForcedInvalidationKind::ForceMiss));
         }
+
+        if !is_fresh {
+            // already expired
+            return Ok(None);
+        }
+
         if session.get_header_bytes("x-force-expire") != b"" {
             return Ok(Some(ForcedInvalidationKind::ForceExpired));
         }
@@ -467,6 +506,22 @@ impl ProxyHttp for ExampleProxyCache {
         key.finalize()
     }
 
+    async fn upstream_request_filter(
+        &self,
+        session: &mut Session,
+        upstream_request: &mut RequestHeader,
+        _ctx: &mut Self::CTX,
+    ) -> Result<()> {
+        if let Some(up_accept_encoding) = session
+            .req_header()
+            .headers
+            .get("x-upstream-accept-encoding")
+        {
+            upstream_request.insert_header(&ACCEPT_ENCODING, up_accept_encoding)?;
+        }
+        Ok(())
+    }
+
     fn response_cache_filter(
         &self,
         _session: &Session,
@@ -487,10 +542,12 @@ impl ProxyHttp for ExampleProxyCache {
         _session: &mut Session,
         upstream_response: &mut ResponseHeader,
         ctx: &mut Self::CTX,
-    ) where
+    ) -> Result<()>
+    where
         Self::CTX: Send + Sync,
     {
         ctx.upstream_status = Some(upstream_response.status.into());
+        Ok(())
     }
 
     async fn response_filter(

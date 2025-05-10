@@ -230,7 +230,7 @@ impl Http2Session {
         // if response_body_reader doesn't exist, the response is not even read yet
         self.response_body_reader
             .as_ref()
-            .map_or(false, |reader| reader.is_end_stream())
+            .is_some_and(|reader| reader.is_end_stream())
     }
 
     /// Check whether stream finished with error.
@@ -257,7 +257,9 @@ impl Http2Session {
         // https://docs.rs/h2/latest/h2/struct.RecvStream.html#method.is_end_stream
         // So poll the data once to check this condition. If an error is returned, that indicates
         // that the stream closed due to an error e.g. h2 protocol error.
-        match reader.data().now_or_never() {
+        //
+        // tokio::task::unconstrained because now_or_never may yield None when the future is ready
+        match tokio::task::unconstrained(reader.data()).now_or_never() {
             Some(None) => Ok(true),
             Some(Some(Ok(_))) => Error::e_explain(H2Error, "unexpected data after end stream"),
             Some(Some(Err(e))) => Error::e_because(H2Error, "while checking end stream", e),
@@ -396,7 +398,7 @@ impl Http2Session {
             if let Some(err) = e.root_cause().downcast_ref::<h2::Error>() {
                 if err.is_go_away()
                     && err.is_remote()
-                    && err.reason().map_or(false, |r| r == h2::Reason::NO_ERROR)
+                    && (err.reason() == Some(h2::Reason::NO_ERROR))
                 {
                     e.retry = true.into();
                 }
@@ -416,26 +418,16 @@ impl Http2Session {
  5. All other errors will terminate the request
 */
 fn handle_read_header_error(e: h2::Error) -> Box<Error> {
-    if e.is_remote()
-        && e.reason()
-            .map_or(false, |r| r == h2::Reason::HTTP_1_1_REQUIRED)
-    {
+    if e.is_remote() && (e.reason() == Some(h2::Reason::HTTP_1_1_REQUIRED)) {
         let mut err = Error::because(H2Downgrade, "while reading h2 header", e);
         err.retry = true.into();
         err
-    } else if e.is_go_away()
-        && e.is_library()
-        && e.reason()
-            .map_or(false, |r| r == h2::Reason::PROTOCOL_ERROR)
-    {
+    } else if e.is_go_away() && e.is_library() && (e.reason() == Some(h2::Reason::PROTOCOL_ERROR)) {
         // remote send invalid H2 responses
         let mut err = Error::because(InvalidH2, "while reading h2 header", e);
         err.retry = true.into();
         err
-    } else if e.is_go_away()
-        && e.is_remote()
-        && e.reason().map_or(false, |r| r == h2::Reason::NO_ERROR)
-    {
+    } else if e.is_go_away() && e.is_remote() && (e.reason() == Some(h2::Reason::NO_ERROR)) {
         // is_go_away: retry via another connection, this connection is being teardown
         let mut err = Error::because(H2Error, "while reading h2 header", e);
         err.retry = true.into();

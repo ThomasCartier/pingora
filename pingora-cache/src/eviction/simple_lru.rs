@@ -86,6 +86,15 @@ impl Manager {
         }
     }
 
+    fn increase_weight(&self, key: u64, delta: usize) {
+        let mut lru = self.lru.write();
+        let Some(node) = lru.get_key_value_mut(&key) else {
+            return;
+        };
+        node.1.size += delta;
+        self.used.fetch_add(delta, Ordering::Relaxed);
+    }
+
     // evict items until the used capacity is below the limit
     fn evict(&self) -> Vec<CompactCacheKey> {
         if self.used.load(Ordering::Relaxed) <= self.limit {
@@ -142,7 +151,7 @@ struct InsertToManager<'a> {
     lru: &'a Manager,
 }
 
-impl<'de, 'a> serde::de::Visitor<'de> for InsertToManager<'a> {
+impl<'de> serde::de::Visitor<'de> for InsertToManager<'_> {
     type Value = ();
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -193,6 +202,12 @@ impl EvictionManager for Manager {
     ) -> Vec<CompactCacheKey> {
         let key = u64key(&item);
         self.insert(key, item, size, false);
+        self.evict()
+    }
+
+    fn increment_weight(&self, item: CompactCacheKey, delta: usize) -> Vec<CompactCacheKey> {
+        let key = u64key(&item);
+        self.increase_weight(key, delta);
         self.evict()
     }
 

@@ -79,7 +79,7 @@ use subrequest::Ctx as SubReqCtx;
 
 pub use proxy_cache::range_filter::{range_header_filter, RangeType};
 pub use proxy_purge::PurgeStatus;
-pub use proxy_trait::ProxyHttp;
+pub use proxy_trait::{FailToProxy, ProxyHttp};
 
 pub mod prelude {
     pub use crate::{http_proxy_service, ProxyHttp, Session};
@@ -253,7 +253,7 @@ impl<SV> HttpProxy<SV> {
     {
         match task {
             HttpTask::Header(header, _eos) => {
-                self.inner.upstream_response_filter(session, header, ctx)
+                self.inner.upstream_response_filter(session, header, ctx)?
             }
             HttpTask::Body(data, eos) => self
                 .inner
@@ -288,6 +288,12 @@ impl<SV> HttpProxy<SV> {
             None
         }
     }
+
+    fn cleanup_sub_req(&self, session: &mut Session) {
+        if let Some(ctx) = session.subrequest_ctx.as_mut() {
+            ctx.release_write_lock();
+        }
+    }
 }
 
 use pingora_cache::HttpCache;
@@ -307,7 +313,7 @@ pub struct Session {
     /// ignore downstream range (skip downstream range filters)
     pub ignore_downstream_range: bool,
     // the context from parent request
-    subrequest_ctx: Option<Box<SubReqCtx>>,
+    pub subrequest_ctx: Option<Box<SubReqCtx>>,
     // Downstream filter modules
     pub downstream_modules_ctx: HttpModuleCtx,
 }
@@ -425,7 +431,20 @@ impl Session {
                         *task = HttpTask::Body(Some(buf), true);
                     }
                 }
-                _ => { /* Done or Failed */ }
+                HttpTask::Done => {
+                    // `Done` can be sent in certain response paths to mark end
+                    // of response if not already done via trailers or body with
+                    // end flag set.
+                    // If the filter returns body bytes on Done,
+                    // write them into the response.
+                    //
+                    // Note, this will not work if end of stream has already
+                    // been seen or we've written content-length bytes.
+                    if let Some(buf) = self.downstream_modules_ctx.response_done_filter()? {
+                        *task = HttpTask::Body(Some(buf), true);
+                    }
+                }
+                _ => { /* Failed */ }
             }
         }
         self.downstream_session.response_duplex_vec(tasks).await
@@ -487,9 +506,9 @@ impl<SV> HttpProxy<SV> {
             .early_request_filter(&mut session, &mut ctx)
             .await
         {
-            self.handle_error(&mut session, &mut ctx, e, "Fail to early filter request:")
+            return self
+                .handle_error(session, &mut ctx, e, "Fail to early filter request:")
                 .await;
-            return None;
         }
 
         let req = session.downstream_session.req_header_mut();
@@ -500,14 +519,14 @@ impl<SV> HttpProxy<SV> {
             .request_header_filter(req)
             .await
         {
-            self.handle_error(
-                &mut session,
-                &mut ctx,
-                e,
-                "Failed in downstream modules request filter:",
-            )
-            .await;
-            return None;
+            return self
+                .handle_error(
+                    session,
+                    &mut ctx,
+                    e,
+                    "Failed in downstream modules request filter:",
+                )
+                .await;
         }
 
         match self.inner.request_filter(&mut session, &mut ctx).await {
@@ -515,14 +534,15 @@ impl<SV> HttpProxy<SV> {
                 if response_sent {
                     // TODO: log error
                     self.inner.logging(&mut session, None, &mut ctx).await;
+                    self.cleanup_sub_req(&mut session);
                     return session.downstream_session.finish().await.ok().flatten();
                 }
                 /* else continue */
             }
             Err(e) => {
-                self.handle_error(&mut session, &mut ctx, e, "Fail to filter request:")
+                return self
+                    .handle_error(session, &mut ctx, e, "Fail to filter request:")
                     .await;
-                return None;
             }
         }
 
@@ -531,6 +551,9 @@ impl<SV> HttpProxy<SV> {
             return self.finish(session, &mut ctx, reuse, err.as_deref()).await;
         }
         // either uncacheable, or cache miss
+
+        // there should not be a write lock in the sub req ctx after this point
+        self.cleanup_sub_req(&mut session);
 
         // decide if the request is allowed to go to upstream
         match self
@@ -550,20 +573,19 @@ impl<SV> HttpProxy<SV> {
                         match session.write_response_header_ref(&BAD_GATEWAY).await {
                             Ok(()) => {}
                             Err(e) => {
-                                self.handle_error(
-                                    &mut session,
-                                    &mut ctx,
-                                    e,
-                                    "Error responding with Bad Gateway:",
-                                )
-                                .await;
-
-                                return None;
+                                return self
+                                    .handle_error(
+                                        session,
+                                        &mut ctx,
+                                        e,
+                                        "Error responding with Bad Gateway:",
+                                    )
+                                    .await;
                             }
                         }
                     }
 
-                    return self.finish(session, &mut ctx, false, None).await;
+                    return self.finish(session, &mut ctx, true, None).await;
                 }
                 /* else continue */
             }
@@ -572,14 +594,14 @@ impl<SV> HttpProxy<SV> {
                     session.cache.disable(NoCacheReason::InternalError);
                 }
 
-                self.handle_error(
-                    &mut session,
-                    &mut ctx,
-                    e,
-                    "Error deciding if we should proxy to upstream:",
-                )
-                .await;
-                return None;
+                return self
+                    .handle_error(
+                        session,
+                        &mut ctx,
+                        e,
+                        "Error deciding if we should proxy to upstream:",
+                    )
+                    .await;
             }
         }
 
@@ -644,14 +666,14 @@ impl<SV> HttpProxy<SV> {
                 };
                 session.cache.disable(reason);
             }
-            let status = self.inner.fail_to_proxy(&mut session, e, &mut ctx).await;
+            let res = self.inner.fail_to_proxy(&mut session, e, &mut ctx).await;
 
             // final error will have > 0 status unless downstream connection is dead
             if !self.inner.suppress_error_log(&session, &ctx, e) {
                 error!(
                     "Fail to proxy: {}, status: {}, tries: {}, retry: {}, {}",
                     final_error.as_ref().unwrap(),
-                    status,
+                    res.error_code,
                     retries,
                     false, // we never retry here
                     self.inner.request_summary(&session, &ctx)
@@ -666,23 +688,32 @@ impl<SV> HttpProxy<SV> {
 
     async fn handle_error(
         &self,
-        session: &mut Session,
+        mut session: Session,
         ctx: &mut <SV as ProxyHttp>::CTX,
         e: Box<Error>,
         context: &str,
-    ) where
+    ) -> Option<Stream>
+    where
         SV: ProxyHttp + Send + Sync + 'static,
         <SV as ProxyHttp>::CTX: Send + Sync,
     {
-        if !self.inner.suppress_error_log(session, ctx, &e) {
+        let res = self.inner.fail_to_proxy(&mut session, &e, ctx).await;
+        if !self.inner.suppress_error_log(&session, ctx, &e) {
             error!(
-                "{context} {}, {}",
+                "{context} {}, status: {}, {}",
                 e,
-                self.inner.request_summary(session, ctx)
+                res.error_code,
+                self.inner.request_summary(&session, ctx)
             );
         }
-        self.inner.fail_to_proxy(session, &e, ctx).await;
-        self.inner.logging(session, Some(&e), ctx).await;
+        self.inner.logging(&mut session, Some(&e), ctx).await;
+        self.cleanup_sub_req(&mut session);
+
+        if res.can_reuse_downstream {
+            session.downstream_session.finish().await.ok().flatten()
+        } else {
+            None
+        }
     }
 }
 

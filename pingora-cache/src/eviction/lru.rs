@@ -93,7 +93,7 @@ struct InsertToManager<'a, const N: usize> {
     lru: &'a Manager<N>,
 }
 
-impl<'de, 'a, const N: usize> serde::de::Visitor<'de> for InsertToManager<'a, N> {
+impl<'de, const N: usize> serde::de::Visitor<'de> for InsertToManager<'_, N> {
     type Value = ();
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -150,6 +150,16 @@ impl<const N: usize> EvictionManager for Manager<N> {
     ) -> Vec<CompactCacheKey> {
         let key = u64key(&item);
         self.0.admit(key, item, size);
+        self.0
+            .evict_to_limit()
+            .into_iter()
+            .map(|(key, _weight)| key)
+            .collect()
+    }
+
+    fn increment_weight(&self, item: CompactCacheKey, delta: usize) -> Vec<CompactCacheKey> {
+        let key = u64key(&item);
+        self.0.increment_weight(key, delta);
         self.0
             .evict_to_limit()
             .into_iter()
